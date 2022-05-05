@@ -1,22 +1,17 @@
 import { CircuitValue, Encoding, arrayProp, prop, PublicKey, Field, Poseidon } from "snarkyjs";
 
-import Permissions from "./permissions";
-
-
 class Item extends CircuitValue {
   @prop owner: PublicKey;
   @prop assignee: PublicKey;
   @prop isDone: Boolean;
   @arrayProp(Field, 5) title: Field[];
   @arrayProp(Field, 100) description: Field[];
-  @prop permissions: Permissions;
 
   constructor(
     owner: PublicKey,
     assignee: PublicKey,
     title: string,
-    description: string,
-    permissions: Permissions
+    description: string
   ) {
     super();
 
@@ -25,7 +20,6 @@ class Item extends CircuitValue {
     this.isDone = new Boolean(false);
     this.title = Encoding.Bijective.Fp.fromString(title);
     this.description = Encoding.Bijective.Fp.fromString(description);
-    this.permissions = permissions;
   }
 
   serializeTitle(): string {
