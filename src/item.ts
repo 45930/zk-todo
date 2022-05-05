@@ -4,8 +4,8 @@ class Item extends CircuitValue {
   @prop owner: PublicKey;
   @prop assignee: PublicKey;
   @prop isDone: Boolean;
-  @arrayProp(Field, 5) title: Field[];
-  @arrayProp(Field, 100) description: Field[];
+  @prop title: Field;
+  @prop description: Field;
 
   constructor(
     owner: PublicKey,
@@ -18,21 +18,28 @@ class Item extends CircuitValue {
     this.owner = owner;
     this.assignee = assignee;
     this.isDone = new Boolean(false);
-    this.title = Encoding.Bijective.Fp.fromString(title);
-    this.description = Encoding.Bijective.Fp.fromString(description);
+    this.title = Encoding.Bijective.Fp.fromString(title)[0];
+    this.description = Encoding.Bijective.Fp.fromString(description)[0];
   }
 
   serializeTitle(): string {
-    return Encoding.Bijective.Fp.toString(this.title);
+    return Encoding.Bijective.Fp.toString([this.title]);
   }
 
   serializeDescription(): string {
-    return Encoding.Bijective.Fp.toString(this.description);
+    return Encoding.Bijective.Fp.toString([this.description]);
+  }
+
+  update(updates: Record<string, string>) {
+    // TODO: add the rest
+    if (Object.hasOwn(updates, 'description')) {
+      this.description = Encoding.Bijective.Fp.fromString(updates.description)[0];
+    }
   }
 
   hash(): Field {
     // TODO: Something better than this
-    return Poseidon.hash([...this.title, ...this.description])
+    return Poseidon.hash([this.title, this.description])
   }
 }
 

@@ -19,24 +19,37 @@ import Item from './item.js';
 
 
 export default class TodolistZKapp extends SmartContract {
-  deploy(args: any) {
-    super.deploy(args);
+  deploy({
+    zkappKey
+  }: {
+    zkappKey: PrivateKey;
+  }) {
+    super.deploy({ zkappKey });
   }
 
-  @method createItem(item: Item, pw: string = '') {
-    return Poseidon.hash([item.hash(), ...Encoding.Bijective.Fp.fromString(pw)]);
+  @method createItem(item: Item, itemHash: Field) {
+    const calculatedItemHash = item.hash();
+    calculatedItemHash.assertEquals(itemHash);
   }
 
-  @method updateItem(oldItem: Item, oldItemHash: Field, pw: string = '', newItem: Item) {
-    // Establish your right to update this item
-    const expectedHash = Poseidon.hash([oldItem.hash(), ...Encoding.Bijective.Fp.fromString(pw)])
-    expectedHash.assertEquals(oldItemHash);
+  @method updateItem(oldItem: Item, oldItemHash: Field, newItem: Item, newItemHash: Field) {
+    const expectedOldHash = oldItem.hash();
+    expectedOldHash.assertEquals(oldItemHash);
 
-    return Poseidon.hash([newItem.hash(), ...Encoding.Bijective.Fp.fromString(pw), oldItemHash]);
+    const calculatedNewItemHash = newItem.hash();
+    calculatedNewItemHash.assertEquals(newItemHash);
   }
 }
 
 export async function deploy() {
+  await isReady;
+
+  Local = Mina.LocalBlockchain();
+  Mina.setActiveInstance(Local);
+  accounts = Local.testAccounts.map(account => account.privateKey);
+  DEPLOYER_ACCOUNT = accounts[0];
+  USER_ACCOUNT = accounts[1];
+
   zkappPrivateKey = PrivateKey.random();
   zkappAddress = zkappPrivateKey.toPublicKey();
   const zkapp = new TodolistZKapp(zkappAddress);
@@ -45,12 +58,11 @@ export async function deploy() {
     address: zkappAddress,
   };
 
-  const tx = Mina.transaction(DEPLOYER_ACCOUNT, async () => {
-    const p = await Party.createSigned(USER_ACCOUNT);
+  const tx = Local.transaction(DEPLOYER_ACCOUNT, () => {
+    const p = Party.createSigned(DEPLOYER_ACCOUNT, { isSameAsFeePayer: true });
 
-    p.balance.subInPlace(ONE_MINA);
-    await zkapp.deploy({ zkappKey: zkappPrivateKey });
-    zkapp.balance.addInPlace(ONE_MINA);
+    p.balance.subInPlace(Mina.accountCreationFee());
+    zkapp.deploy({ zkappKey: zkappPrivateKey });
   });
   await tx.send().wait();
   await Mina.getAccount(zkappAddress);
@@ -59,28 +71,28 @@ export async function deploy() {
 }
 
 export async function createItem(item: Item, pw: string = ''): Promise<Field> {
-  let resp = Field(0);
   let tx = Mina.transaction(DEPLOYER_ACCOUNT, () => {
     const zkapp = new TodolistZKapp(zkappAddress);
-    resp = zkapp.createItem(item, pw);
+    zkapp.createItem(item, item.hash());
   });
   try {
     await tx.send().wait();
-    return resp;
+    const pwFields = Encoding.Bijective.Fp.fromString(pw)
+    return Poseidon.hash([item.hash(), ...pwFields])
   } catch (err) {
     return Field(0);
   }
 }
 
 export async function updateItem(oldItem: Item, oldItemHash: Field, pw: string = '', newItem: Item) {
-  let resp = Field(0);
   let tx = Mina.transaction(DEPLOYER_ACCOUNT, () => {
     const zkapp = new TodolistZKapp(zkappAddress);
-    resp = zkapp.updateItem(oldItem, oldItemHash, pw, newItem);
+    zkapp.updateItem(oldItem, oldItemHash, newItem, newItem.hash());
   });
   try {
     await tx.send().wait();
-    return resp;
+    const pwFields = Encoding.Bijective.Fp.fromString(pw)
+    return Poseidon.hash([newItem.hash(), ...pwFields])
   } catch (err) {
     return Field(0);
   }
@@ -93,12 +105,3 @@ let USER_ACCOUNT: PrivateKey;
 let ONE_MINA: UInt64;
 let zkappPrivateKey: PrivateKey;
 let zkappAddress: PublicKey;
-
-isReady.then(() => {
-  Local = Mina.LocalBlockchain();
-  Mina.setActiveInstance(Local);
-  accounts = Local.testAccounts.map(account => account.privateKey);
-  DEPLOYER_ACCOUNT = accounts[0];
-  USER_ACCOUNT = accounts[1];
-  ONE_MINA = UInt64.fromNumber(1000000);
-})
